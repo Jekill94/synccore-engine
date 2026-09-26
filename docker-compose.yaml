@@ -1,0 +1,62 @@
+services:
+  # 1. DATABASE MYSQL
+  db:
+    image: mysql:8.0
+    container_name: synccore_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 
+      MYSQL_DATABASE: synccore_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - db_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # 2. BACKEND PYTHON (FLASK)
+  backend:
+    build: ./processor-python
+    container_name: synccore_backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_HOST=synccore_db
+      - DB_USER=root
+      - DB_PASSWORD=
+      - DB_NAME=synccore_db
+    depends_on:
+      - db
+
+  # 3. INGESTER GO
+  ingester:
+    build: ./ingester-go
+    container_name: synccore_ingester
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - DB_USER=root
+      - DB_PASSWORD=root
+      - DB_NAME=synccore_db
+      - BACKEND_URL=http://backend:5000/process
+    depends_on:
+      - db
+      - backend
+
+  # 4. FRONTEND NEXT.JS
+  frontend:
+    build: ./dashboard-next
+    container_name: synccore_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+      - NEXT_PUBLIC_INGEST_URL=http://localhost:8080
+    depends_on:
+      - backend
+
+volumes:
+  db_data:

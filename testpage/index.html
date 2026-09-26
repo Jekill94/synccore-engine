@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SyncCore Engine - Test Ingestion</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #0f172a;
+      color: #f8fafc;
+      padding: 30px;
+      max-width: 550px;
+      margin: auto;
+    }
+    .card {
+      background-color: #1e293b;
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.4);
+      border: 1px solid #334155;
+    }
+    h2 { margin-top: 0; color: #38bdf8; font-size: 20px; }
+    label { display: block; margin-top: 12px; font-size: 13px; color: #94a3b8; }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 6px;
+      border: 1px solid #334155;
+      background-color: #0f172a;
+      color: #fff;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 12px;
+      background-color: #0284c7;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 15px;
+      transition: background 0.2s;
+    }
+    button:hover { background-color: #0369a1; }
+    #debugBox {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 6px;
+      background-color: #090d16;
+      border: 1px solid #1e293b;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>SyncCore - Test Ingestion Lead</h2>
+    <form id="ingestForm">
+      
+      <!-- Selettore del Metodo di Autenticazione -->
+      <label>Metodo di Autenticazione Header:</label>
+      <select id="authHeaderType" onchange="updateHeaderLabel()">
+        <option value="X-Employee-ID">Matricola Dipendente (X-Employee-ID)</option>
+        <option value="X-API-Key">API Key (X-API-Key)</option>
+        <option value="X-Domain">Dominio (X-Domain)</option>
+      </select>
+
+      <label id="headerValueLabel">Valore Matricola:</label>
+      <input type="text" id="headerValue" placeholder="es. EMP-8831" required>
+
+      <hr style="border: 0; border-top: 1px solid #334155; margin: 20px 0;">
+
+      <!-- Dati della Lead / Messaggio -->
+      <label>Nome Mittente:</label>
+      <input type="text" id="leadName" value="Mario Rossi" required>
+
+      <label>Email Mittente:</label>
+      <input type="email" id="leadEmail" value="mario.rossi@test.it" required>
+
+      <label>Messaggio / Contenuto:</label>
+      <textarea id="leadMessage" rows="3" required>Test di invio segnalazione a SyncCore Engine</textarea>
+
+      <button type="submit" id="submitBtn">Invia a Go (Ingester)</button>
+    </form>
+
+    <!-- Riquadro per la risposta di errore o successo -->
+    <div id="debugBox"></div>
+  </div>
+
+  <script>
+    function updateHeaderLabel() {
+      const type = document.getElementById('authHeaderType').value;
+      const label = document.getElementById('headerValueLabel');
+      const input = document.getElementById('headerValue');
+
+      if (type === 'X-Employee-ID') {
+        label.innerText = 'Valore Matricola:';
+        input.placeholder = 'es. EMP-8831';
+      } else if (type === 'X-API-Key') {
+        label.innerText = 'Valore API Key:';
+        input.placeholder = 'es. sk_live_...';
+      } else if (type === 'X-Domain') {
+        label.innerText = 'Valore Dominio:';
+        input.placeholder = 'es. studiobianchi.it';
+      }
+    }
+
+    document.getElementById('ingestForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const debugBox = document.getElementById('debugBox');
+      const submitBtn = document.getElementById('submitBtn');
+      
+      debugBox.style.display = 'block';
+      debugBox.style.color = '#94a3b8';
+      debugBox.innerText = '⏳ Invio richiesta in corso verso http://localhost:8080/ingest...';
+      submitBtn.disabled = true;
+
+      const headerName = document.getElementById('authHeaderType').value;
+      const headerVal = document.getElementById('headerValue').value.trim();
+
+      const payload = {
+        name: document.getElementById('leadName').value,
+        email: document.getElementById('leadEmail').value,
+        message: document.getElementById('leadMessage').value
+      };
+
+      const headers = {
+        'Content-Type': 'application/json'
+      };
+      headers[headerName] = headerVal;
+
+      try {
+        const response = await fetch("http://localhost:8080/ingest", {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(payload)
+        });
+
+        const statusText = `HTTP Status: ${response.status} ${response.statusText}`;
+        let responseData = "";
+
+        try {
+          responseData = await response.text();
+        } catch(e) {
+          responseData = "Nessun corpo della risposta restituito.";
+        }
+
+        if (response.ok) {
+          debugBox.style.color = '#4ade80';
+          debugBox.innerText = `✅ SUCCESSO!\n${statusText}\nRisposta Server:\n${responseData}`;
+        } else {
+          debugBox.style.color = '#f87171';
+          debugBox.innerText = `❌ ERRORE RISPOSTA SERVER!\n${statusText}\nDettaglio:\n${responseData}`;
+        }
+      } catch (err) {
+        debugBox.style.color = '#f87171';
+        debugBox.innerText = `❌ ERRORE DI RETE / CORS!\nImpossibile raggiungere Go su http://localhost:8080/ingest.\n\nDettaglio tecnico:\n${err.message}`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+
+</body>
+</html>
